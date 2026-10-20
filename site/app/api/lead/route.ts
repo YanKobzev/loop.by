@@ -1,3 +1,4 @@
+import { sendTelegram } from '@/lib/telegram';
 import { NextResponse } from 'next/server';
 import { randomBytes } from 'node:crypto';
 export async function POST(request:Request){
@@ -21,8 +22,10 @@ export async function POST(request:Request){
  return NextResponse.json({error:`Не удалось сохранить заявку (DB-${r.status}-${code}). Ответы остаются в форме.`},{status:502});
  }
  const lines=['Новая заявка loop.by',`Номер: ${reference}`,...Object.entries(payload).filter(([,v])=>v).map(([k,v])=>`${k}: ${v}`)];
- let sent=false;try{const t=await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chat_id:process.env.TELEGRAM_CHAT_ID,text:lines.join('\n').slice(0,4000)}),signal:AbortSignal.timeout(8000)});sent=t.ok;}catch{}
+ const delivery=await sendTelegram(process.env.TELEGRAM_BOT_TOKEN!,process.env.TELEGRAM_CHAT_ID!,lines.join('\n'));
+ const sent=delivery.sent;
+ if(!sent)console.error('buyback_telegram_failed',{code:delivery.code});
  if(sent)await fetch(`${url}/rest/v1/buyback_leads?reference=eq.${reference}`,{method:'PATCH',headers:dbHeaders,body:JSON.stringify({notification_status:'sent'}),signal:AbortSignal.timeout(5000)}).catch(()=>{});
- return NextResponse.json({reference});
+ return NextResponse.json({reference,notification:delivery.code});
  }catch{console.error('buyback_storage_network_failed');return NextResponse.json({error:'Не удалось связаться с базой (DB-NETWORK). Ответы остаются в форме. Попробуйте ещё раз.'},{status:502});}
 }
